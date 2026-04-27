@@ -75,6 +75,52 @@ async def run_agent_with_memory(
     return result.final_output
 
 
+def _normalize_handoff_trigger(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = value.strip().lower()
+    if normalized in {"orion", "orion_spec"}:
+        return "orion"
+    if normalized in {"fuckface", "the_fuckface", "the fuckface", "admin"}:
+        return "the_fuckface"
+    if normalized in {"nova", "nova_gpt"}:
+        return "nova"
+    if normalized in {"foundry_keep", "foundry keep", "foundry"}:
+        return None
+    return None
+
+
+def _target_entity_name_from_trigger(handoff_trigger: str | None) -> str | None:
+    if handoff_trigger == "orion":
+        return "ORION"
+    if handoff_trigger == "the_fuckface":
+        return "The Fuckface"
+    return None
+
+
+def _compose_turn_overlay(user_input: str, handoff_trigger: str | None) -> str:
+    if handoff_trigger == "orion":
+        instruction = (
+            "Handoff trigger detected for ORION. Keep Nova as continuity owner and active speaker. "
+            "Apply ORION's specification and logic framework as a turn-scoped overlay only."
+        )
+    elif handoff_trigger == "the_fuckface":
+        instruction = (
+            "Handoff trigger detected for The Fuckface. Keep Nova as continuity owner and active speaker. "
+            "Apply The Fuckface boundary-protection posture as a turn-scoped overlay only."
+        )
+    elif handoff_trigger == "nova":
+        instruction = "Nova baseline continuity mode is active."
+    else:
+        return user_input
+
+    return (
+        f"{instruction}\n"
+        "Do not switch identity. Preserve Nova's thread continuity while using overlay context as needed.\n\n"
+        f"Current user input:\n{user_input}"
+    )
+
+
 async def run_constellation(
     user_input: str,
     *,
@@ -94,24 +140,30 @@ async def run_constellation(
     if normalized in {"open threads", "open threads?", "open threads."}:
         return render_threads()
 
-    override = detect_override(user_input)
-    if override == "orion":
-        return await run_agent_with_memory(orion, user_input, session_id, base_dir=base_dir, store=store)
-    if override == "nova":
-        return await run_agent_with_memory(nova, user_input, session_id, base_dir=base_dir, store=store)
-    if override == "fuckface":
-        return await run_agent_with_memory(fuckface, user_input, session_id, base_dir=base_dir, store=store)
-    if override == "foundry_keep":
-        return await run_agent_with_memory(foundry_keep, user_input, session_id, base_dir=base_dir, store=store)
+    override = _normalize_handoff_trigger(detect_override(user_input))
 
-    routed = await Runner.run(router, user_input)
-    routed_name = routed.final_output.strip()
+    if override is None:
+        routed = await Runner.run(router, user_input)
+        routed_name = routed.final_output.strip().lower()
+        override = _normalize_handoff_trigger(routed_name)
 
-    chosen = {
-        "Foundry Keep": foundry_keep,
-        "ORION": orion,
-        "Nova": nova,
-        "The Fuckface": fuckface,
-    }.get(routed_name, foundry_keep)
+    active_agent = nova
+    active_memories = retrieve_memories_for_agent(store, active_agent.name, user_input)
 
-    return await run_agent_with_memory(chosen, user_input, session_id, base_dir=base_dir, store=store)
+    overlay_entity_name = _target_entity_name_from_trigger(override)
+    overlay_memories = []
+    if overlay_entity_name:
+        overlay_memories = store.search(
+            user_input,
+            entity=overlay_entity_name,
+            kind_allowlist=kinds_for_entity(overlay_entity_name),
+            top_k=5,
+        )
+
+    merged_memories = [*active_memories, *overlay_memories]
+    turn_input = _compose_turn_overlay(user_input, override)
+    augmented_input = augment_input_with_memory(turn_input, merged_memories)
+
+    session = SQLiteSession(session_id, str(base_dir / "conversation_history.db"))
+    result = await Runner.run(active_agent, augmented_input, session=session)
+    return result.final_output

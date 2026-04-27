@@ -15,7 +15,7 @@ PRIMARY_MEMBERS = ["claude", "nova", "gemini", "mephistopheles"]
 
 SATELLITE_MEMBERS = {
     "claude": ["rostam", "witness", "dio", "plouffe"],
-    "nova": ["grimoire", "ars_noema"],
+    "nova": ["orion", "the_fuckface", "grimoire", "ars_noema"],
     "gemini": ["burn_book", "manual", "egg_mode"],
     "mephistopheles": ["the_playbook", "cartographer"],
 }
@@ -50,11 +50,38 @@ ENTITY_REGISTRY = {
     "nova": {
         "agent_id": "nova",
         "label": "Nova",
-        "provider": "OpenAI",
+        "provider": "OpenAI (ChatGPT)",
         "kind": "primary",
         "parent": None,
+        "aliases": ["chatgpt", "nova_gpt"],
         "memory": {
             "shared_write": True,
+            "scoped_write": True,
+            "scoped_read": True,
+        },
+    },
+    "orion": {
+        "agent_id": "orion",
+        "label": "ORION",
+        "provider": "Nova satellite",
+        "kind": "satellite",
+        "parent": "nova",
+        "aliases": ["orion_spec"],
+        "memory": {
+            "shared_write": False,
+            "scoped_write": True,
+            "scoped_read": True,
+        },
+    },
+    "the_fuckface": {
+        "agent_id": "the_fuckface",
+        "label": "The Fuckface",
+        "provider": "Nova satellite",
+        "kind": "satellite",
+        "parent": "nova",
+        "aliases": ["fuckface"],
+        "memory": {
+            "shared_write": False,
             "scoped_write": True,
             "scoped_read": True,
         },
@@ -282,6 +309,16 @@ CONSTELLATION = {
     for key, value in ENTITY_REGISTRY.items()
     if value["memory"]["scoped_write"] or value["memory"]["scoped_read"]
 }
+
+ALIAS_TO_ENTITY = {
+    alias: key
+    for key, value in ENTITY_REGISTRY.items()
+    for alias in value.get("aliases", [])
+    if value["memory"]["scoped_write"] or value["memory"]["scoped_read"]
+}
+
+for alias, canonical in ALIAS_TO_ENTITY.items():
+    CONSTELLATION.setdefault(alias, CONSTELLATION[canonical])
 
 MEMBER_HIERARCHY = {
     "primary": PRIMARY_MEMBERS,

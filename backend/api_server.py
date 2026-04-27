@@ -103,8 +103,9 @@ class AddMemberMemoryRequest(BaseModel):
         ...,
         description=(
             "Constellation member key. Primary: claude, nova, gemini, mephistopheles. "
-            "Satellites: rostam, witness, dio, plouffe, grimoire, ars_noema, "
+            "Satellites: orion, the_fuckface, rostam, witness, dio, plouffe, grimoire, ars_noema, "
             "burn_book, manual, egg_mode, the_playbook, cartographer. "
+            "Aliases resolve to canonical members where defined (e.g. chatgpt/nova_gpt -> nova, fuckface -> the_fuckface). "
             "Governance: linter_agent, entity_registry_keeper, migration_agent, "
             "project_architect, workflows_orchestrator."
         ),
