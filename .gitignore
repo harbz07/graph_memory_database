@@ -16,6 +16,8 @@ frontend/BigGulp/.env.local
 frontend/BigGulp/.wrangler/
 *.pyc
 memory_graph.html
+scripts/graph_memory_database.code-workspace
+data/*.json
 artifacts/memory/*
 !artifacts/memory/.gitkeep
 !artifacts/memory/scoped/
