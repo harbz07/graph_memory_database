@@ -1,0 +1,96 @@
+version: 1
+mode: phased_rollout
+default_user: harvey
+canonical_registry: backend/entity_registry.py
+artifact_store: artifacts/memory
+active_surface:
+  - backend/
+  - frontend/BigGulp/
+  - scripts/
+  - migrations/
+  - build_graph.py
+workshop_surface:
+  - workshop/
+agents:
+  - id: linter_agent
+    label: Linter Agent
+    memory_scope: linter_agent
+    can:
+      read_shared: true
+      write_shared: false
+      read_scoped: true
+      write_scoped: true
+    owns:
+      - requirements.txt
+      - .github/workflows/ci-active-dev.yml
+      - .github/workflows/deploy-frontend.yml
+    coordinates_with:
+      - workflows_orchestrator
+      - project_architect
+  - id: entity_registry_keeper
+    label: Entity Registry Keeper
+    memory_scope: entity_registry_keeper
+    can:
+      read_shared: true
+      write_shared: true
+      read_scoped: true
+      write_scoped: true
+    owns:
+      - backend/entity_registry.py
+      - backend/memory_core.py
+      - backend/api_server.py
+      - backend/gemini_integration.py
+      - backend/mcp_server.py
+      - frontend/BigGulp/src/components/BigGulp.tsx
+    coordinates_with:
+      - migration_agent
+      - project_architect
+      - workflows_orchestrator
+  - id: migration_agent
+    label: Migration Agent
+    memory_scope: migration_agent
+    can:
+      read_shared: true
+      write_shared: false
+      read_scoped: true
+      write_scoped: true
+    owns:
+      - migrations/
+      - scripts/export_memory_artifacts.py
+      - artifacts/memory/
+      - build_graph.py
+    coordinates_with:
+      - entity_registry_keeper
+      - workflows_orchestrator
+  - id: project_architect
+    label: Project Architect
+    memory_scope: project_architect
+    can:
+      read_shared: true
+      write_shared: true
+      read_scoped: true
+      write_scoped: true
+    owns:
+      - README.md
+      - workshop/
+      - governance/
+    coordinates_with:
+      - entity_registry_keeper
+      - linter_agent
+      - workflows_orchestrator
+  - id: workflows_orchestrator
+    label: Workflows Orchestrator
+    memory_scope: workflows_orchestrator
+    can:
+      read_shared: true
+      write_shared: true
+      read_scoped: true
+      write_scoped: true
+    owns:
+      - .github/workflows/
+      - frontend/BigGulp/wrangler.toml
+      - .env.example
+    coordinates_with:
+      - linter_agent
+      - migration_agent
+      - project_architect

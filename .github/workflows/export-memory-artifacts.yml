@@ -1,0 +1,30 @@
+name: Export Memory Artifacts
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 12 * * *'
+
+jobs:
+  export-memory-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+      - name: Export memory artifacts
+        env:
+          MEM0_API_KEY: ${{ secrets.MEM0_API_KEY }}
+        run: python scripts/export_memory_artifacts.py
+      - name: Build graph artifact
+        env:
+          MEM0_API_KEY: ${{ secrets.MEM0_API_KEY }}
+        run: python build_graph.py
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: memory-artifacts
+          path: artifacts/memory/
