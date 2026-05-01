@@ -90,35 +90,18 @@ def _normalize_handoff_trigger(value: str | None) -> str | None:
     return None
 
 
-def _target_entity_name_from_trigger(handoff_trigger: str | None) -> str | None:
-    if handoff_trigger == "orion":
-        return "ORION"
-    if handoff_trigger == "the_fuckface":
-        return "The Fuckface"
-    return None
-
-
-def _compose_turn_overlay(user_input: str, handoff_trigger: str | None) -> str:
-    if handoff_trigger == "orion":
-        instruction = (
-            "Handoff trigger detected for ORION. Keep Nova as continuity owner and active speaker. "
-            "Apply ORION's specification and logic framework as a turn-scoped overlay only."
-        )
-    elif handoff_trigger == "the_fuckface":
-        instruction = (
-            "Handoff trigger detected for The Fuckface. Keep Nova as continuity owner and active speaker. "
-            "Apply The Fuckface boundary-protection posture as a turn-scoped overlay only."
-        )
-    elif handoff_trigger == "nova":
-        instruction = "Nova baseline continuity mode is active."
-    else:
-        return user_input
-
-    return (
-        f"{instruction}\n"
-        "Do not switch identity. Preserve Nova's thread continuity while using overlay context as needed.\n\n"
-        f"Current user input:\n{user_input}"
-    )
+def _select_agent(
+    override: str | None,
+    *,
+    nova: Agent,
+    orion: Agent,
+    fuckface: Agent,
+) -> Agent:
+    if override == "orion":
+        return orion
+    if override == "the_fuckface":
+        return fuckface
+    return nova
 
 
 async def run_constellation(
@@ -147,22 +130,9 @@ async def run_constellation(
         routed_name = routed.final_output.strip().lower()
         override = _normalize_handoff_trigger(routed_name)
 
-    active_agent = nova
-    active_memories = retrieve_memories_for_agent(store, active_agent.name, user_input)
-
-    overlay_entity_name = _target_entity_name_from_trigger(override)
-    overlay_memories = []
-    if overlay_entity_name:
-        overlay_memories = store.search(
-            user_input,
-            entity=overlay_entity_name,
-            kind_allowlist=kinds_for_entity(overlay_entity_name),
-            top_k=5,
-        )
-
-    merged_memories = [*active_memories, *overlay_memories]
-    turn_input = _compose_turn_overlay(user_input, override)
-    augmented_input = augment_input_with_memory(turn_input, merged_memories)
+    active_agent = _select_agent(override, nova=nova, orion=orion, fuckface=fuckface)
+    memories = retrieve_memories_for_agent(store, active_agent.name, user_input)
+    augmented_input = augment_input_with_memory(user_input, memories)
 
     session = SQLiteSession(session_id, str(base_dir / "conversation_history.db"))
     result = await Runner.run(active_agent, augmented_input, session=session)
