@@ -3,6 +3,13 @@ mode: phased_rollout
 default_user: harvey
 canonical_registry: backend/entity_registry.py
 artifact_store: artifacts/memory
+stewardship_specs:
+  - governance/agents/backend-runtime.agent.md
+  - governance/agents/frontend-ingestion.agent.md
+  - governance/agents/memory-schema.agent.md
+  - governance/agents/member-registry.agent.md
+  - governance/agents/deployment.agent.md
+  - governance/agents/artifact-export.agent.md
 active_surface:
   - backend/
   - frontend/BigGulp/

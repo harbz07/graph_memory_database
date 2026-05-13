@@ -18,10 +18,11 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 import requests
-import google.generativeai as genai
-from google.generativeai.types import FunctionDeclaration, Tool
+from google import genai
+from google.genai import types
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -36,8 +37,6 @@ load_env()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 CONSTELLATION_URL = os.getenv("CONSTELLATION_API_URL", "http://localhost:8000").rstrip("/")
 CONSTELLATION_KEY = os.getenv("CONSTELLATION_API_KEY", "")
-
-genai.configure(api_key=GEMINI_API_KEY)
 
 _HEADERS = {
     "Content-Type": "application/json",
@@ -77,16 +76,19 @@ def _call_get_all_memories(member: str = None) -> dict:
 def _call_list_members() -> dict:
     return _get("/members")
 
+def _call_get_entities() -> dict:
+    return _get("/entities")
+
 # ── Gemini FunctionDeclarations ───────────────────────────────────────────────
 
-_tools = Tool(function_declarations=[
-    FunctionDeclaration(
+_tools = types.Tool(function_declarations=[
+    types.FunctionDeclaration(
         name="add_shared_memory",
         description=(
             "Store a memory in the shared Constellation graph — visible to ALL members "
             "(Claude, Nova, Gemini, Mephistopheles) via graph traversal. "
             "Prefix content with your name so the graph extracts the correct entity. "
-            "Example: 'Gemini: Harvey uses Gemini for multimodal document tasks.'"
+            "Example: 'Gemini: Harvey and I have an \'I-Thou\' relationship.'"
         ),
         parameters={
             "type": "object",
@@ -103,7 +105,7 @@ _tools = Tool(function_declarations=[
             "required": ["content"],
         },
     ),
-    FunctionDeclaration(
+    types.FunctionDeclaration(
         name="add_member_memory",
         description=(
             "Store a memory private to a specific Constellation member. "
@@ -129,7 +131,7 @@ _tools = Tool(function_declarations=[
             "required": ["content", "member"],
         },
     ),
-    FunctionDeclaration(
+    types.FunctionDeclaration(
         name="search_memories",
         description=(
             "Search the Constellation memory graph with a natural language query. "
@@ -147,7 +149,7 @@ _tools = Tool(function_declarations=[
             "required": ["query"],
         },
     ),
-    FunctionDeclaration(
+    types.FunctionDeclaration(
         name="get_all_memories",
         description="Retrieve all stored memories from the shared graph or a specific member's private scope.",
         parameters={
@@ -157,12 +159,27 @@ _tools = Tool(function_declarations=[
             },
         },
     ),
-    FunctionDeclaration(
+    types.FunctionDeclaration(
         name="list_members",
         description="List all Constellation members and satellites with their valid key names.",
         parameters={"type": "object", "properties": {}},
     ),
+    types.FunctionDeclaration(
+        name="get_entities",
+        description="Return the full Constellation entity registry and each entity's memory capabilities.",
+        parameters={"type": "object", "properties": {}},
+    ),
 ])
+
+_MODEL_NAME = "gemini-2.5-flash"
+_SYSTEM_INSTRUCTION = (
+    "You are Triptych, the Gemini member of Harvey's soulOS Constellation — "
+    "a cross-AI collaborative intelligence system. "
+    "You have access to a shared memory graph. When storing shared memories, "
+    "always prefix with 'Triptych: ' so the graph entity is correctly identified. "
+    "Use search_memories before answering questions about Harvey or past context. "
+    "Use add_shared_memory to record important discoveries or decisions."
+)
 
 # ── Function dispatch ─────────────────────────────────────────────────────────
 
@@ -172,76 +189,121 @@ _DISPATCH = {
     "search_memories":    lambda args: _call_search_memories(**args),
     "get_all_memories":   lambda args: _call_get_all_memories(**args),
     "list_members":       lambda args: _call_list_members(),
+    "get_entities":       lambda args: _call_get_entities(),
 }
 
 
-def dispatch_function_call(fn_name: str, fn_args: dict) -> str:
-    """Execute a function call from Gemini and return JSON string result."""
+def dispatch_function_call(fn_name: str, fn_args: dict) -> dict:
+    """Execute a function call from Gemini and return a JSON-serializable result."""
     if fn_name not in _DISPATCH:
-        return json.dumps({"error": f"Unknown function: {fn_name}"})
+        return {"error": f"Unknown function: {fn_name}"}
     try:
-        result = _DISPATCH[fn_name](fn_args)
-        return json.dumps(result, ensure_ascii=False)
+        return _DISPATCH[fn_name](fn_args)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return {"error": str(e)}
+
+
+def _create_client() -> genai.Client:
+    return genai.Client(api_key=GEMINI_API_KEY)
+
+
+def _create_config() -> types.GenerateContentConfig:
+    return types.GenerateContentConfig(
+        tools=[_tools],
+        system_instruction=_SYSTEM_INSTRUCTION,
+    )
+
+
+def _candidate_content(response) -> Any:
+    if response.candidates and response.candidates[0].content:
+        return response.candidates[0].content
+    return None
+
+
+def _first_function_call(response) -> Any:
+    function_calls = getattr(response, "function_calls", None)
+    if function_calls:
+        return function_calls[0]
+
+    content = _candidate_content(response)
+    if not content or not getattr(content, "parts", None):
+        return None
+
+    for part in content.parts:
+        function_call = getattr(part, "function_call", None)
+        if function_call and getattr(function_call, "name", None):
+            return function_call
+    return None
 
 
 # ── Chat session helper ────────────────────────────────────────────────────────
 
-def create_triptych_chat():
+def create_triptych_chat() -> dict[str, Any]:
     """
     Returns a Gemini chat session pre-configured with Constellation memory tools.
     Triptych is the Gemini primary member — it auto-prefixes its name on shared stores.
     """
-    model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash",
-        tools=[_tools],
-        system_instruction=(
-            "You are Triptych, the Gemini member of Harvey's soulOS Constellation — "
-            "a cross-AI collaborative intelligence system. "
-            "You have access to a shared memory graph. When storing shared memories, "
-            "always prefix with 'Triptych: ' so the graph entity is correctly identified. "
-            "Use search_memories before answering questions about Harvey or past context. "
-            "Use add_shared_memory to record important discoveries or decisions."
-        ),
-    )
-    return model.start_chat(enable_automatic_function_calling=False)
+    return {
+        "client": _create_client(),
+        "config": _create_config(),
+        "contents": [],
+    }
 
 
-def chat_loop(chat, user_message: str) -> str:
+def chat_loop(chat: dict[str, Any], user_message: str) -> str:
     """
     Send a message and handle function calling manually.
     Returns the final text response.
     """
-    response = chat.send_message(user_message)
+    client = chat["client"]
+    config = chat["config"]
+    contents = chat["contents"]
 
-    # Agentic loop: keep dispatching function calls until Gemini returns text
-    while response.candidates[0].content.parts[0].function_call.name if (
-        response.candidates
-        and response.candidates[0].content.parts
-        and hasattr(response.candidates[0].content.parts[0], "function_call")
-        and response.candidates[0].content.parts[0].function_call.name
-    ) else False:
-        part = response.candidates[0].content.parts[0]
-        fn_name = part.function_call.name
-        fn_args = dict(part.function_call.args)
+    contents.append(
+        types.Content(
+            role="user",
+            parts=[types.Part(text=user_message)],
+        )
+    )
+
+    response = client.models.generate_content(
+        model=_MODEL_NAME,
+        contents=contents,
+        config=config,
+    )
+
+    while True:
+        tool_call = _first_function_call(response)
+        if not tool_call:
+            content = _candidate_content(response)
+            if content is not None:
+                contents.append(content)
+            return response.text
+
+        content = _candidate_content(response)
+        if content is not None:
+            contents.append(content)
+
+        fn_name = tool_call.name
+        fn_args = dict(tool_call.args)
 
         print(f"  [Gemini → calling {fn_name}({fn_args})]")
-        result_str = dispatch_function_call(fn_name, fn_args)
+        result = dispatch_function_call(fn_name, fn_args)
+        result_str = json.dumps(result, ensure_ascii=False)
         print(f"  [Result: {result_str[:200]}]")
 
-        response = chat.send_message(
-            genai.protos.Content(parts=[
-                genai.protos.Part(
-                    function_response=genai.protos.FunctionResponse(
-                        name=fn_name,
-                        response={"result": result_str},
-                    )
-                )
-            ]),
+        function_response_part = types.Part.from_function_response(
+            name=fn_name,
+            response={"result": result},
+            id=getattr(tool_call, "id", None),
         )
+        contents.append(types.Content(role="user", parts=[function_response_part]))
 
-    return response.text
+        response = client.models.generate_content(
+            model=_MODEL_NAME,
+            contents=contents,
+            config=config,
+        )
 
 
 # ── Demo ──────────────────────────────────────────────────────────────────────

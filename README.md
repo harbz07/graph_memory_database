@@ -33,6 +33,12 @@ graph_memory_database/
   governance/
     agent_roster.yml
     agents/
+      backend-runtime.agent.md
+      frontend-ingestion.agent.md
+      memory-schema.agent.md
+      member-registry.agent.md
+      deployment.agent.md
+      artifact-export.agent.md
   migrations/
     cortex_migration.py
     glitch_kernel_migration.py
@@ -42,8 +48,11 @@ graph_memory_database/
     readme_seed.py
     preflight.cmd
   workshop/
+    agent-lab/
+    experiments/
     prototypes/
     research/
+    theoretics/
   data/
     mem0_memories.json
     chatgpt_kernel.txt
@@ -196,7 +205,7 @@ See `frontend/BigGulp/.env.example`.
 
 ## Environment Setup
 
-Copy `.env.example` to `.env.local` for local use and fill in your actual secrets.
+Copy `.env.example` to `.env` or `.env.local` for local use and fill in your actual secrets.
 
 Relevant variables:
 
@@ -208,7 +217,7 @@ Relevant variables:
 - `CORS_ORIGINS`
 - `CONSTELLATION_MAX_BATCH_SIZE`
 
-Tracked secret-bearing files were sanitized. Use `.env.local` or shell environment variables for real credentials.
+Tracked secret-bearing files were sanitized. The project loader reads `.env` first and then `.env.local`, with repo-local values overriding ambient shell variables so scripts and CI use the checked project contract.
 
 ## Canonical Artifact Export
 
@@ -279,6 +288,15 @@ Governance ownership and coordination live in:
 - `governance/agent_roster.yml`
 - `governance/agents/*.agent.md`
 
+Stewardship specs currently include:
+
+- `backend-runtime.agent.md`
+- `frontend-ingestion.agent.md`
+- `memory-schema.agent.md`
+- `member-registry.agent.md`
+- `deployment.agent.md`
+- `artifact-export.agent.md`
+
 Active GitHub workflows live in `.github/workflows/`:
 
 - `ci-active-dev.yml` validates backend compilation and the BigGulp production build
@@ -300,6 +318,14 @@ The artifact export workflow expects:
 ## Workshop Partition
 
 `workshop/` is the phased surface for experimental or pre-promotion material. Runtime code, canonical exports, and deployable automation stay in the active root surface until a future promotion or relocation plan says otherwise.
+
+Current workshop subpartitions are:
+
+- `workshop/experiments/` for unstable utilities and ad hoc evaluation work
+- `workshop/theoretics/` for conceptual and non-runtime design material
+- `workshop/prototypes/` for incubating buildable ideas
+- `workshop/agent-lab/` for pre-governance agent specs and coordination drafts
+- `workshop/research/` for supporting reference material
 
 ## Notes
 

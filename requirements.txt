@@ -5,7 +5,7 @@ aiohttp>=3.9.0
 fastmcp
 fastapi
 uvicorn[standard]
-google-generativeai
+google-genai
 requests
 networkx
 pyvis
