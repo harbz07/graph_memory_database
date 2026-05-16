@@ -8,13 +8,20 @@ on:
 jobs:
   export-memory-artifacts:
     runs-on: ubuntu-latest
+    env:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
       - name: Install backend dependencies
-        run: pip install -r requirements.txt
+        run: python -m pip install -r requirements.txt
+      - name: Verify MEM0 secret is configured
+        env:
+          MEM0_API_KEY: ${{ secrets.MEM0_API_KEY }}
+        run: |
+          python -c "import os, sys; sys.exit(0 if os.getenv('MEM0_API_KEY') else 1)"
       - name: Export memory artifacts
         env:
           MEM0_API_KEY: ${{ secrets.MEM0_API_KEY }}
@@ -28,3 +35,43 @@ jobs:
         with:
           name: memory-artifacts
           path: artifacts/memory/
+      - name: Notify Discord
+        if: always() && env.DISCORD_WEBHOOK_URL != ''
+        env:
+          JOB_STATUS: ${{ job.status }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_WORKFLOW: ${{ github.workflow }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          status = os.environ["JOB_STATUS"]
+          color = 5763719 if status == "success" else 15548997
+          run_url = f'{os.environ["GITHUB_SERVER_URL"]}/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{os.environ["GITHUB_RUN_ID"]}'
+          payload = {
+              "embeds": [
+                  {
+                      "title": os.environ["GITHUB_WORKFLOW"],
+                      "description": f'Memory artifact export finished with status: **{status}**',
+                      "color": color,
+                      "fields": [
+                          {"name": "Repository", "value": os.environ["GITHUB_REPOSITORY"], "inline": True},
+                          {"name": "Run", "value": f'[Open workflow run]({run_url})', "inline": True},
+                      ],
+                  }
+              ]
+          }
+          data = json.dumps(payload).encode("utf-8")
+          request = urllib.request.Request(
+              os.environ["DISCORD_WEBHOOK_URL"],
+              data=data,
+              headers={"Content-Type": "application/json"},
+          )
+          with urllib.request.urlopen(request) as response:
+              if response.status >= 400:
+                  raise RuntimeError(f'Discord webhook failed with status {response.status}')
+          PY
